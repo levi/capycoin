@@ -10,13 +10,13 @@ import (
 // Hashcash-like algorithm
 func ProofOfWork(lastProof int) int {
 	proof := 0
-	for validProof(lastProof, proof) == false {
+	for ValidProof(lastProof, proof) == false {
 		proof++
 	}
 	return proof
 }
 
-func validProof(lastProof, proof int) bool {
+func ValidProof(lastProof, proof int) bool {
 	h := sha256.New()
 	i := fmt.Sprintf("%d%d", lastProof, proof)
 	h.Write([]byte(i))

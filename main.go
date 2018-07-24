@@ -18,6 +18,11 @@ type ErrorResponse struct {
   err string `json:"error"`
 }
 
+type ChainResponse struct {
+  Chain []blockchain.Block `json:"chain"`
+  Length int `json:"length"`
+}
+
 type TransactionRequest struct {
   Sender string `json:"sender"`
   Recipient string `json:"recipient"`
@@ -39,6 +44,11 @@ type RegisterNodeRequest struct {
 type RegisterNodeResponse struct {
   Message string `json:"message"`
   Nodes map[string]string `json:"nodes"`
+}
+
+type ResolveNodeResponse struct {
+  Message string `json:"message"`
+  Chain []blockchain.Block `json:"chain"`
 }
 
 func JSONResponse(handler http.Handler) http.Handler {
@@ -71,6 +81,16 @@ func main() {
       return
     }
 
+    c := ChainResponse{
+      bc.Chain,
+      len(bc.Chain),
+    }
+    j, err = json.Marshal(c)
+    if err != nil {
+      // TODO: Handle error
+      fmt.Printf("Error marhsalling json: %v\n", err)
+      return
+    }
     w.Write(j)
   })
 
@@ -160,6 +180,31 @@ func main() {
   })
 
   router.POST("/nodes/resolve", func (w http.ResponseWriter, r *http.Request, _ httprouter.Params)  {
+    replaced, err := bc.ResolveConflicts(nodes)
+    if err != nil {
+      // TODO: Handle error
+      fmt.Printf("Unable to resolve conflicts: %v\n", err)
+      return
+    }
+    var m ResolveNodeResponse
+    if replaced {
+      m = ResolveNodeResponse{
+        "Our chain was replaced",
+        bc.Chain,
+      }
+    } else {
+      m = ResolveNodeResponse{
+        "Out chain was the authority",
+        bc.Chain,
+      }
+    }
+    j, err := json.Marshal(m)
+    if err != nil {
+      // TODO: Handle error
+      fmt.Printf("Error marhsalling json: %v\n", err)
+      return
+    }
+    w.Write(j)
   })
 
   fmt.Printf("Listening on localhost:3000\n")

@@ -1,8 +1,15 @@
 package blockchain
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"sync"
 	"time"
+
+	"github.com/levi/capycoin/hashcash"
+	"github.com/levi/capycoin/nodes"
 )
 
 // Blockchain represents an in-memory blockchain with yet-to-be recorded
@@ -59,4 +66,74 @@ func (b *Blockchain) LastBlock() Block {
 
 func (b *Blockchain) unsafeLastBlock() Block {
 	return b.Chain[len(b.Chain)-1]
+}
+
+// ResolveConflicts derives consensus by identifying the longest available chain
+func (b *Blockchain) ResolveConflicts(nodes *nodes.Nodes) (bool, error) {
+	maxLength := len(b.Chain)
+	var newChain []Block
+
+	for _, host := range nodes.Addresses {
+		resp, err := http.Get(fmt.Sprintf("http://%s/chain", host))
+		if err != nil {
+			return false, err
+		}
+		if resp.StatusCode == 200 {
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return false, err
+			}
+
+			var c ChainResponse
+			err = json.Unmarshal(body, &c)
+			if err != nil {
+				return false, err
+			}
+
+			length := c.Length
+			chain := c.Chain
+
+			if length > maxLength {
+				isValid, _ := b.ValidChain(chain)
+				if isValid {
+					maxLength = length
+					newChain = chain
+				}
+			}
+		}
+	}
+
+	if newChain != nil {
+		b.Chain = newChain
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (b *Blockchain) ValidChain(chain []Block) (bool, error) {
+	lastBlock := chain[0]
+	i := 1
+	for i < len(chain) {
+		block := chain[i]
+		lastHash, err := lastBlock.Hash()
+		if err != nil {
+			return false, err
+		}
+		if block.PrevHash != lastHash {
+			return false, nil
+		}
+		if hashcash.ValidProof(lastBlock.Proof, block.Proof) == false {
+			return false, nil
+		}
+		lastBlock = block
+		i++
+	}
+
+	return true, nil
+}
+
+type ChainResponse struct {
+	Chain  []Block `json:"chain"`
+	Length int     `json:"length"`
 }
